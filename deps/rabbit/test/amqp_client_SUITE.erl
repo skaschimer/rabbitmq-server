@@ -29,6 +29,7 @@
          assert_event_prop/2]).
 -import(amqp_utils,
         [init/1, init/2,
+         close/1,
          connection_config/1, connection_config/2,
          web_amqp/1,
          flush/1,
@@ -129,6 +130,10 @@ groups() ->
        handshake_timeout,
        credential_expires,
        attach_to_exclusive_queue,
+       dynamic_target_short_link_name,
+       dynamic_target_long_link_name,
+       dynamic_source_rpc,
+       dynamic_terminus_delete,
        modified_classic_queue,
        modified_quorum_queue,
        modified_dead_letter_headers_exchange,
@@ -446,7 +451,7 @@ reliable_send_receive(QType, Outcome, Config) ->
 %% Fields delivery-failed and message-annotations are not implemented.
 modified_classic_queue(Config) ->
     QName = atom_to_binary(?FUNCTION_NAME),
-    {Connection, Session, LinkPair} = init(Config),
+    {_, Session, LinkPair} = Init = init(Config),
     {ok, #{type := <<"classic">>}} = rabbitmq_amqp_client:declare_queue(
                                        LinkPair, QName,
                                        #{arguments => #{<<"x-queue-type">> => {utf8, <<"classic">>}}}),
@@ -483,9 +488,7 @@ modified_classic_queue(Config) ->
     ok = amqp10_client:detach_link(Receiver),
     ?assertMatch({ok, #{message_count := 1}},
                  rabbitmq_amqp_client:delete_queue(LinkPair, QName)),
-    ok = rabbitmq_amqp_client:detach_management_link_pair_sync(LinkPair),
-    ok = end_session_sync(Session),
-    ok = close_connection_sync(Connection).
+    ok = close(Init).
 
 %% We test the modified outcome with quorum queues.
 %% We expect that quorum queues implement field
@@ -494,7 +497,7 @@ modified_classic_queue(Config) ->
 %% * message-annotations correctly
 modified_quorum_queue(Config) ->
     QName = atom_to_binary(?FUNCTION_NAME),
-    {Connection, Session, LinkPair} = init(Config),
+    {_, Session, LinkPair} = Init = init(Config),
     {ok, #{type := <<"quorum">>}} = rabbitmq_amqp_client:declare_queue(
                                       LinkPair, QName,
                                       #{arguments => #{<<"x-queue-type">> => {utf8, <<"quorum">>}}}),
@@ -598,15 +601,13 @@ modified_quorum_queue(Config) ->
 
     ok = amqp10_client:detach_link(Receiver1),
     {ok, _} = rabbitmq_amqp_client:delete_queue(LinkPair, QName),
-    ok = rabbitmq_amqp_client:detach_management_link_pair_sync(LinkPair),
-    ok = end_session_sync(Session),
-    ok = close_connection_sync(Connection).
+    ok = close(Init).
 
 %% Test that a message can be routed based on the message-annotations
 %% provided in the modified outcome as described in
 %% https://rabbitmq.com/blog/2024/10/11/modified-outcome
 modified_dead_letter_headers_exchange(Config) ->
-    {Connection, Session, LinkPair} = init(Config),
+    {_, Session, LinkPair} = Init = init(Config),
     HeadersXName = <<"my headers exchange">>,
     AlternateXName = <<"my alternate exchange">>,
     SourceQName = <<"source quorum queue">>,
@@ -730,14 +731,12 @@ modified_dead_letter_headers_exchange(Config) ->
     {ok, #{message_count := 0}} = rabbitmq_amqp_client:delete_queue(LinkPair, TrashQName),
     ok = rabbitmq_amqp_client:delete_exchange(LinkPair, HeadersXName),
     ok = rabbitmq_amqp_client:delete_exchange(LinkPair, AlternateXName),
-    ok = rabbitmq_amqp_client:detach_management_link_pair_sync(LinkPair),
-    ok = end_session_sync(Session),
-    ok = close_connection_sync(Connection).
+    ok = close(Init).
 
 %% Test that custom dead lettering event tracking works as described in
 %% https://rabbitmq.com/blog/2024/10/11/modified-outcome
 modified_dead_letter_history(Config) ->
-    {Connection, Session, LinkPair} = init(Config),
+    {_, Session, LinkPair} = Init = init(Config),
     Q1 = <<"qq 1">>,
     Q2 = <<"qq 2">>,
 
@@ -809,15 +808,13 @@ modified_dead_letter_history(Config) ->
     ok = detach_link_sync(Receiver2),
     {ok, #{message_count := 0}} = rabbitmq_amqp_client:delete_queue(LinkPair, Q1),
     {ok, #{message_count := 0}} = rabbitmq_amqp_client:delete_queue(LinkPair, Q2),
-    ok = rabbitmq_amqp_client:detach_management_link_pair_sync(LinkPair),
-    ok = end_session_sync(Session),
-    ok = close_connection_sync(Connection).
+    ok = close(Init).
 
 %% Tests that confirmations are returned correctly
 %% when sending many messages async to a quorum queue.
 sender_settle_mode_unsettled(Config) ->
     QName = atom_to_binary(?FUNCTION_NAME),
-    {Connection, Session, LinkPair} = init(Config),
+    {_, Session, LinkPair} = Init = init(Config),
     QProps = #{arguments => #{<<"x-queue-type">> => {utf8, <<"quorum">>}}},
     {ok, _} = rabbitmq_amqp_client:declare_queue(LinkPair, QName, QProps),
     Address = rabbitmq_amqp_address:queue(QName),
@@ -842,12 +839,10 @@ sender_settle_mode_unsettled(Config) ->
     ok = amqp10_client:detach_link(Sender),
     ?assertMatch({ok, #{message_count := NumMsgs}},
                  rabbitmq_amqp_client:delete_queue(LinkPair, QName)),
-    ok = rabbitmq_amqp_client:detach_management_link_pair_sync(LinkPair),
-    ok = end_session_sync(Session),
-    ok = close_connection_sync(Connection).
+    ok = close(Init).
 
 sender_settle_mode_unsettled_fanout(Config) ->
-    {Connection, Session, LinkPair} = init(Config),
+    {_, Session, LinkPair} = Init = init(Config),
     QNames = [<<"q1">>, <<"q2">>, <<"q3">>],
     [begin
          {ok, _} = rabbitmq_amqp_client:declare_queue(LinkPair, QName, #{}),
@@ -876,15 +871,13 @@ sender_settle_mode_unsettled_fanout(Config) ->
     [?assertMatch({ok, #{message_count := NumMsgs}},
                   rabbitmq_amqp_client:delete_queue(LinkPair, QName))
      || QName <- QNames],
-    ok = rabbitmq_amqp_client:detach_management_link_pair_sync(LinkPair),
-    ok = end_session_sync(Session),
-    ok = close_connection_sync(Connection).
+    ok = close(Init).
 
 %% Tests that confirmations are returned correctly
 %% when sending many messages async to a quorum queue where
 %% every 3rd message is settled by the sender.
 sender_settle_mode_mixed(Config) ->
-    {Connection, Session, LinkPair} = init(Config),
+    {_, Session, LinkPair} = Init = init(Config),
     QName = atom_to_binary(?FUNCTION_NAME),
     QProps = #{arguments => #{<<"x-queue-type">> => {utf8, <<"quorum">>}}},
     {ok, _} = rabbitmq_amqp_client:declare_queue(LinkPair, QName, QProps),
@@ -918,9 +911,7 @@ sender_settle_mode_mixed(Config) ->
     ok = amqp10_client:detach_link(Sender),
     ?assertMatch({ok, #{message_count := NumMsgs}},
                  rabbitmq_amqp_client:delete_queue(LinkPair, QName)),
-    ok = rabbitmq_amqp_client:detach_management_link_pair_sync(LinkPair),
-    ok = end_session_sync(Session),
-    ok = close_connection_sync(Connection).
+    ok = close(Init).
 
 invalid_transfer_settled_flag(Config) ->
     OpnConf = connection_config(Config),
@@ -968,7 +959,7 @@ invalid_transfer_settled_flag(Config) ->
     ok = close_connection_sync(Connection).
 
 quorum_queue_rejects(Config) ->
-    {Connection, Session, LinkPair} = init(Config),
+    {_, Session, LinkPair} = Init = init(Config),
     QName = atom_to_binary(?FUNCTION_NAME),
     QProps = #{arguments => #{<<"x-queue-type">> => {utf8, <<"quorum">>},
                               <<"x-max-length">> => {ulong, 1},
@@ -1009,9 +1000,7 @@ quorum_queue_rejects(Config) ->
     ok = amqp10_client:detach_link(Sender),
     ?assertMatch({ok, #{message_count := 2}},
                  rabbitmq_amqp_client:delete_queue(LinkPair, QName)),
-    ok = rabbitmq_amqp_client:detach_management_link_pair_sync(LinkPair),
-    ok = amqp10_client:end_session(Session),
-    ok = close_connection_sync(Connection).
+    ok = close(Init).
 
 receiver_settle_mode_first(Config) ->
     QName = atom_to_binary(?FUNCTION_NAME),
@@ -2374,7 +2363,7 @@ consumer_priority_quorum_queue(Config) ->
 
 consumer_priority(QType, Config) ->
     QName = atom_to_binary(?FUNCTION_NAME),
-    {Connection, Session, LinkPair} = init(Config),
+    {_, Session, LinkPair} = Init = init(Config),
     QProps = #{arguments => #{<<"x-queue-type">> => {utf8, QType}}},
     {ok, #{type := QType}} = rabbitmq_amqp_client:declare_queue(LinkPair, QName, QProps),
 
@@ -2451,14 +2440,12 @@ consumer_priority(QType, Config) ->
     ok = amqp10_client:detach_link(ReceiverHighPrio),
     ok = amqp10_client:detach_link(ReceiverLowPrio),
     {ok, #{message_count := 1}} = rabbitmq_amqp_client:delete_queue(LinkPair, QName),
-    ok = rabbitmq_amqp_client:detach_management_link_pair_sync(LinkPair),
-    ok = end_session_sync(Session),
-    ok = close_connection_sync(Connection).
+    ok = close(Init).
 
 single_active_consumer_priority_quorum_queue(Config) ->
     QType = <<"quorum">>,
     QName = atom_to_binary(?FUNCTION_NAME),
-    {Connection, Session1, LinkPair} = init(Config),
+    {Connection, Session1, LinkPair} = Init = init(Config),
     QProps = #{arguments => #{<<"x-queue-type">> => {utf8, QType},
                               <<"x-single-active-consumer">> => true}},
     {ok, #{type := QType}} = rabbitmq_amqp_client:declare_queue(LinkPair, QName, QProps),
@@ -2587,9 +2574,7 @@ single_active_consumer_priority_quorum_queue(Config) ->
 
     ok = amqp10_client:detach_link(Recv1),
     {ok, #{message_count := 0}} = rabbitmq_amqp_client:delete_queue(LinkPair, QName),
-    ok = rabbitmq_amqp_client:detach_management_link_pair_sync(LinkPair),
-    ok = end_session_sync(Session1),
-    ok = close_connection_sync(Connection).
+    ok = close(Init).
 
 single_active_consumer_classic_queue(Config) ->
     single_active_consumer(<<"classic">>, Config).
@@ -2599,7 +2584,7 @@ single_active_consumer_quorum_queue(Config) ->
 
 single_active_consumer(QType, Config) ->
     QName = atom_to_binary(?FUNCTION_NAME),
-    {Connection, Session, LinkPair} = init(Config),
+    {_, Session, LinkPair} = Init = init(Config),
     QProps = #{arguments => #{<<"x-queue-type">> => {utf8, QType},
                               <<"x-single-active-consumer">> => true}},
     {ok, #{type := QType}} = rabbitmq_amqp_client:declare_queue(LinkPair, QName, QProps),
@@ -2698,9 +2683,7 @@ single_active_consumer(QType, Config) ->
 
     ok = amqp10_client:detach_link(Receiver2),
     {ok, _} = rabbitmq_amqp_client:delete_queue(LinkPair, QName),
-    ok = rabbitmq_amqp_client:detach_management_link_pair_sync(LinkPair),
-    ok = end_session_sync(Session),
-    ok = close_connection_sync(Connection).
+    ok = close(Init).
 
 single_active_consumer_drain_classic_queue(Config) ->
     single_active_consumer_drain(<<"classic">>, Config).
@@ -2710,7 +2693,7 @@ single_active_consumer_drain_quorum_queue(Config) ->
 
 single_active_consumer_drain(QType, Config) ->
     QName = atom_to_binary(?FUNCTION_NAME),
-    {Connection, Session, LinkPair} = init(Config),
+    {_, Session, LinkPair} = Init = init(Config),
     QProps = #{arguments => #{<<"x-queue-type">> => {utf8, QType},
                               <<"x-single-active-consumer">> => true}},
     {ok, #{type := QType}} = rabbitmq_amqp_client:declare_queue(LinkPair, QName, QProps),
@@ -2815,9 +2798,7 @@ single_active_consumer_drain(QType, Config) ->
     end,
     ?assertMatch({ok, #{message_count := 0}},
                  rabbitmq_amqp_client:delete_queue(LinkPair, QName)),
-    ok = rabbitmq_amqp_client:detach_management_link_pair_sync(LinkPair),
-    ok = end_session_sync(Session),
-    ok = close_connection_sync(Connection).
+    ok = close(Init).
 
 %% "A session endpoint can choose to unmap its output handle for a link. In this case, the endpoint MUST
 %% send a detach frame to inform the remote peer that the handle is no longer attached to the link endpoint.
@@ -2935,7 +2916,7 @@ detach_requeues_drop_head_classic_queue(Config) ->
     QName2 = <<"q2">>,
     Addr1 = rabbitmq_amqp_address:queue(QName1),
     Addr2 = rabbitmq_amqp_address:queue(QName2),
-    {Connection, Session, LinkPair} = init(Config),
+    {_, Session, LinkPair} = Init = init(Config),
     {ok, #{}} = rabbitmq_amqp_client:declare_queue(
                   LinkPair,
                   QName1,
@@ -2988,9 +2969,7 @@ detach_requeues_drop_head_classic_queue(Config) ->
     ok = amqp10_client:detach_link(Receiver2),
     {ok, #{message_count := 1}} = rabbitmq_amqp_client:delete_queue(LinkPair, QName1),
     {ok, #{message_count := 0}} = rabbitmq_amqp_client:delete_queue(LinkPair, QName2),
-    ok = rabbitmq_amqp_client:detach_management_link_pair_sync(LinkPair),
-    ok = end_session_sync(Session),
-    ok = close_connection_sync(Connection).
+    ok = close(Init).
 
 detach_requeues_two_connections_classic_queue(Config) ->
     detach_requeues_two_connections(<<"classic">>, Config).
@@ -3880,15 +3859,13 @@ leader_transfer_stream_credit_batches(Config) ->
 
 leader_transfer_credit(QName, QType, Credit, Config) ->
     %% Create queue with leader on node 1.
-    {Connection1, Session1, LinkPair1} = init(1, Config),
+    {_, _, LinkPair1} = Init = init(1, Config),
     {ok, #{type := QType}} = rabbitmq_amqp_client:declare_queue(
                                LinkPair1,
                                QName,
                                #{arguments => #{<<"x-queue-type">> => {utf8, QType},
                                                 <<"x-queue-leader-locator">> => {utf8, <<"client-local">>}}}),
-    ok = rabbitmq_amqp_client:detach_management_link_pair_sync(LinkPair1),
-    ok = end_session_sync(Session1),
-    ok = close_connection_sync(Connection1),
+    ok = close(Init),
 
     OpnConf = connection_config(0, Config),
     {ok, Connection0} = amqp10_client:open_connection(OpnConf),
@@ -3939,15 +3916,13 @@ leader_transfer_stream_send(Config) ->
 %% Test a leader transfer while we send to the queue.
 leader_transfer_send(QName, QType, Config) ->
     %% Create queue with leader on node 1.
-    {Connection1, Session1, LinkPair1} = init(1, Config),
+    {_, _, LinkPair1} = Init = init(1, Config),
     {ok, #{type := QType}} = rabbitmq_amqp_client:declare_queue(
                                LinkPair1,
                                QName,
                                #{arguments => #{<<"x-queue-type">> => {utf8, QType},
                                                 <<"x-queue-leader-locator">> => {utf8, <<"client-local">>}}}),
-    ok = rabbitmq_amqp_client:detach_management_link_pair_sync(LinkPair1),
-    ok = end_session_sync(Session1),
-    ok = close_connection_sync(Connection1),
+    ok = close(Init),
 
     %% Send from a follower.
     OpnConf = connection_config(0, Config),
@@ -4399,7 +4374,7 @@ incoming_message_interceptors(Config) ->
                                                   {set_header_timestamp, false}]]),
     Stream = <<"my stream">>,
     QQName = <<"my quorum queue">>,
-    {Connection, Session, LinkPair} = init(Config),
+    {_, Session, LinkPair} = Init = init(Config),
     {ok, #{type := <<"stream">>}} = rabbitmq_amqp_client:declare_queue(
                                       LinkPair,
                                       Stream,
@@ -4442,9 +4417,7 @@ incoming_message_interceptors(Config) ->
     ok = amqp10_client:detach_link(QQReceiver),
     {ok, _} = rabbitmq_amqp_client:delete_queue(LinkPair, Stream),
     {ok, _} = rabbitmq_amqp_client:delete_queue(LinkPair, QQName),
-    ok = rabbitmq_amqp_client:detach_management_link_pair_sync(LinkPair),
-    ok = end_session_sync(Session),
-    ok = close_connection_sync(Connection),
+    ok = close(Init),
     true = rpc(Config, persistent_term, erase, [Key]).
 
 trace_classic_queue(Config) ->
@@ -4793,6 +4766,230 @@ attach_to_exclusive_queue(Config) ->
     #'queue.delete_ok'{} = amqp_channel:call(Ch, #'queue.delete'{queue = QName}),
     ok = rabbit_ct_client_helpers:close_channel(Ch).
 
+dynamic_target_short_link_name(Config) ->
+    OpnConf0 = connection_config(Config),
+    OpnConf = OpnConf0#{container_id := <<"my-container">>,
+                        notify_with_performative => true},
+    {ok, Connection} = amqp10_client:open_connection(OpnConf),
+    {ok, Session} = amqp10_client:begin_session_sync(Connection),
+
+    %% "The address of the target MUST NOT be set" [3.5.4]
+    Target = #{address => undefined,
+               dynamic => true,
+               capabilities => [<<"temporary-queue">>]},
+    ShortLinkName = <<"my/sender">>,
+    AttachArgs = #{name => ShortLinkName,
+                   role => {sender, Target},
+                   snd_settle_mode => mixed,
+                   rcv_settle_mode => first},
+    {ok, Sender} = amqp10_client:attach_link(Session, AttachArgs),
+    Addr = receive {amqp10_event, {link, Sender, {attached, Attach}}} ->
+                       #'v1_0.attach'{
+                          target = #'v1_0.target'{
+                                      address = {utf8, Address},
+                                      dynamic = true}} = Attach,
+                       Address
+           after 30000 -> ct:fail({missing_event, ?LINE})
+           end,
+    %% The client doesn't really care what the address looks like.
+    %% However let's do whitebox testing here and check the address format.
+    %% We expect the address to contain both container ID and link name since they are short.
+    ?assertMatch(<<"/queues/amq.dyn-my-container-my%2Fsender-", _GUID/binary>>, Addr),
+    ok = wait_for_credit(Sender),
+    ok = amqp10_client:send_msg(Sender, amqp10_msg:new(<<"t1">>, <<"m1">>)),
+    ok = wait_for_accepted(<<"t1">>),
+
+    {ok, Receiver} = amqp10_client:attach_receiver_link(Session, <<"my-receiver">>, Addr, unsettled),
+    {ok, Msg} = amqp10_client:get_msg(Receiver),
+    ?assertEqual(<<"m1">>, amqp10_msg:body_bin(Msg)),
+    ok = amqp10_client:accept_msg(Receiver, Msg),
+
+    %% The exclusive queue should be deleted when we close our connection.
+    ?assertMatch([_ExclusiveQueue], rpc(Config, rabbit_amqqueue, list, [])),
+    ok = close_connection_sync(Connection),
+    eventually(?_assertEqual([], rpc(Config, rabbit_amqqueue, list, []))),
+    ok.
+
+dynamic_target_long_link_name(Config) ->
+    OpnConf0 = connection_config(Config),
+    OpnConf = OpnConf0#{container_id := <<"my-container">>,
+                        notify_with_performative => true},
+    {ok, Connection} = amqp10_client:open_connection(OpnConf),
+    {ok, Session} = amqp10_client:begin_session_sync(Connection),
+
+    %% "The address of the target MUST NOT be set" [3.5.4]
+    Target = #{address => undefined,
+               dynamic => true,
+               capabilities => [<<"temporary-queue">>]},
+    LongLinkName = binary:copy(<<"z">>, 200),
+    AttachArgs = #{name => LongLinkName,
+                   role => {sender, Target},
+                   snd_settle_mode => mixed,
+                   rcv_settle_mode => first},
+    {ok, Sender} = amqp10_client:attach_link(Session, AttachArgs),
+    Addr = receive {amqp10_event, {link, Sender, {attached, Attach}}} ->
+                       #'v1_0.attach'{
+                          target = #'v1_0.target'{
+                                      address = {utf8, Address},
+                                      dynamic = true}} = Attach,
+                       Address
+           after 30000 -> ct:fail({missing_event, ?LINE})
+           end,
+    %% The client doesn't really care what the address looks like.
+    %% However let's do whitebox testing here and check the address format.
+    %% We expect the address to not contain the long link name.
+    ?assertMatch(<<"/queues/amq.dyn.gen-", _GUID/binary>>, Addr),
+    ok = wait_for_credit(Sender),
+    ok = amqp10_client:send_msg(Sender, amqp10_msg:new(<<"t1">>, <<"m1">>)),
+    ok = wait_for_accepted(<<"t1">>),
+
+    {ok, Receiver} = amqp10_client:attach_receiver_link(Session, <<"my-receiver">>, Addr, unsettled),
+    {ok, Msg} = amqp10_client:get_msg(Receiver),
+    ?assertEqual(<<"m1">>, amqp10_msg:body_bin(Msg)),
+    ok = amqp10_client:accept_msg(Receiver, Msg),
+    flush(accepted),
+
+    %% Since RabbitMQ uses the delete-on-close lifetime policy, the exclusive queue should be
+    %% "deleted at the point that the link which caused its creation ceases to exist" [3.5.10]
+    ok = amqp10_client:detach_link(Sender),
+    receive {amqp10_event, {link, Receiver, {detached, Detach}}} ->
+                ?assertMatch(
+                   #'v1_0.detach'{error = #'v1_0.error'{condition = ?V_1_0_AMQP_ERROR_RESOURCE_DELETED}},
+                   Detach)
+    after 5000 -> ct:fail({missing_event, ?LINE})
+    end,
+    ok = close_connection_sync(Connection).
+
+%% Test the following RPC workflow:
+%% RPC client -> queue         -> RPC server
+%% RPC server -> dynamic queue -> RPC client
+dynamic_source_rpc(Config) ->
+    OpnConf0 = connection_config(Config),
+    OpnConf = OpnConf0#{container_id := <<"rpc-client">>,
+                        notify_with_performative => true},
+    {ok, ConnectionClient} = amqp10_client:open_connection(OpnConf),
+    {ok, SessionClient} = amqp10_client:begin_session_sync(ConnectionClient),
+
+    %% "The address of the source MUST NOT be set" [3.5.3]
+    Source = #{address => undefined,
+               dynamic => true,
+               capabilities => [<<"temporary-queue">>],
+               durable => none},
+    AttachArgs = #{name => <<"rpc-client-receiver🥕"/utf8>>,
+                   role => {receiver, Source, self()},
+                   snd_settle_mode => unsettled,
+                   rcv_settle_mode => first,
+                   filter => #{}},
+    {ok, ReceiverClient} = amqp10_client:attach_link(SessionClient, AttachArgs),
+    RespAddr = receive {amqp10_event, {link, ReceiverClient, {attached, Attach}}} ->
+                           #'v1_0.attach'{
+                              source = #'v1_0.source'{
+                                          address = {utf8, Address},
+                                          dynamic = true}} = Attach,
+                           Address
+               after 30000 -> ct:fail({missing_event, ?LINE})
+               end,
+    %% The client doesn't really care what the address looks like.
+    %% However let's do whitebox testing here and check the address format.
+    %% We expect the address to contain both container ID and link name since they are short.
+    ?assertMatch(<<"/queues/amq.dyn-rpc-client-rpc-client-receiver", _CarrotAndGUID/binary>>,
+                 RespAddr),
+
+    %% Let's use a separate connection for the RPC server.
+    {_, SessionServer, LinkPair} = RpcServer = init(Config),
+    ReqQName = atom_to_binary(?FUNCTION_NAME),
+    ReqAddr = rabbitmq_amqp_address:queue(ReqQName),
+    {ok, _} = rabbitmq_amqp_client:declare_queue(LinkPair, ReqQName, #{}),
+    {ok, ReceiverServer} = amqp10_client:attach_receiver_link(SessionServer, <<"rpc-server-receiver">>, ReqAddr, unsettled),
+    {ok, SenderServer} = amqp10_client:attach_sender_link(SessionServer, <<"rpc-server-sender">>, null),
+    ok = wait_for_credit(SenderServer),
+
+    {ok, SenderClient} = amqp10_client:attach_sender_link(SessionClient, <<"rpc-client-sender">>, ReqAddr),
+    wait_for_credit(SenderClient),
+    flush(attached),
+
+    ok = amqp10_client:send_msg(
+           SenderClient,
+           amqp10_msg:set_properties(
+             #{reply_to => RespAddr},
+             amqp10_msg:new(<<"t1">>, <<"hello">>))),
+    ok = wait_for_accepted(<<"t1">>),
+
+    {ok, ReqMsg} = amqp10_client:get_msg(ReceiverServer),
+    ReqBody = amqp10_msg:body_bin(ReqMsg),
+    RespBody = string:uppercase(ReqBody),
+    #{reply_to := ReplyTo} = amqp10_msg:properties(ReqMsg),
+    ok = amqp10_client:send_msg(
+           SenderServer,
+           amqp10_msg:set_properties(
+             #{to => ReplyTo},
+             amqp10_msg:new(<<"t2">>, RespBody))),
+    ok = wait_for_accepted(<<"t2">>),
+    ok = amqp10_client:accept_msg(ReceiverServer, ReqMsg),
+
+    {ok, RespMsg} = amqp10_client:get_msg(ReceiverClient),
+    ?assertEqual(<<"HELLO">>, amqp10_msg:body_bin(RespMsg)),
+    ok = amqp10_client:accept_msg(ReceiverClient, RespMsg),
+
+    ok = detach_link_sync(ReceiverServer),
+    ok = detach_link_sync(SenderClient),
+    {ok, #{message_count := 0}} = rabbitmq_amqp_client:delete_queue(LinkPair, ReqQName),
+    ok = detach_link_sync(SenderServer),
+    ok = close(RpcServer),
+    ok = close_connection_sync(ConnectionClient).
+
+dynamic_terminus_delete(Config) ->
+    OpnConf = connection_config(Config),
+    {ok, Connection} = amqp10_client:open_connection(OpnConf),
+    {ok, Session1} = amqp10_client:begin_session_sync(Connection),
+    {ok, Session2} = amqp10_client:begin_session_sync(Connection),
+
+    Terminus = #{address => undefined,
+                 dynamic => true,
+                 capabilities => [<<"temporary-queue">>],
+                 durable => none},
+    RcvAttachArgs = #{role => {receiver, Terminus, self()},
+                      snd_settle_mode => unsettled,
+                      rcv_settle_mode => first,
+                      filter => #{}},
+    SndAttachArgs = #{role => {sender, Terminus},
+                      snd_settle_mode => mixed,
+                      rcv_settle_mode => first},
+    RcvAttachArgs1 = RcvAttachArgs#{name => <<"receiver 1">>},
+    RcvAttachArgs2 = RcvAttachArgs#{name => <<"receiver 2">>},
+    RcvAttachArgs3 = RcvAttachArgs#{name => <<"receiver 3">>},
+    SndAttachArgs1 = SndAttachArgs#{name => <<"sender 1">>},
+    SndAttachArgs2 = SndAttachArgs#{name => <<"sender 2">>},
+    SndAttachArgs3 = SndAttachArgs#{name => <<"sender 3">>},
+    {ok, _R1} = amqp10_client:attach_link(Session1, RcvAttachArgs1),
+    {ok, _R2} = amqp10_client:attach_link(Session2, RcvAttachArgs2),
+    {ok, R3} = amqp10_client:attach_link(Session2, RcvAttachArgs3),
+    {ok, _S1} = amqp10_client:attach_link(Session1, SndAttachArgs1),
+    {ok, _S2} = amqp10_client:attach_link(Session2, SndAttachArgs2),
+    {ok, S3} = amqp10_client:attach_link(Session2, SndAttachArgs3),
+    [receive {amqp10_event, {link, _LinkRef, attached}} -> ok
+     after 30000 -> ct:fail({missing_event, ?LINE})
+     end
+     || _ <- lists:seq(1, 6)],
+
+    %% We should now have 6 exclusive queues.
+    ?assertEqual(6, rpc(Config, rabbit_amqqueue, count, [])),
+
+    %% Since RabbitMQ uses the delete-on-close lifetime policy, the exclusive queue should be
+    %% "deleted at the point that the link which caused its creation ceases to exist" [3.5.10]
+    ok = detach_link_sync(R3),
+    ok = detach_link_sync(S3),
+    ?assertEqual(4, rpc(Config, rabbit_amqqueue, count, [])),
+
+    %% When a session is ended, the sessions's links cease to exist.
+    ok = end_session_sync(Session2),
+    eventually(?_assertEqual(2, rpc(Config, rabbit_amqqueue, count, []))),
+
+    %% When a connection is closed, the connection's links cease to exist.
+    ok = close_connection_sync(Connection),
+    eventually(?_assertEqual(0, rpc(Config, rabbit_amqqueue, count, []))),
+    ok.
+
 priority_classic_queue(Config) ->
     QArgs = #{<<"x-queue-type">> => {utf8, <<"classic">>},
               <<"x-max-priority">> => {ulong, 10}},
@@ -4803,7 +5000,7 @@ priority_quorum_queue(Config) ->
     priority(QArgs, Config).
 
 priority(QArgs, Config) ->
-    {Connection, Session, LinkPair} = init(Config),
+    {_, Session, LinkPair} = Init = init(Config),
     QName = atom_to_binary(?FUNCTION_NAME),
     Address = rabbitmq_amqp_address:queue(QName),
     {ok, _} = rabbitmq_amqp_client:declare_queue(LinkPair, QName, #{arguments => QArgs}),
@@ -4846,12 +5043,10 @@ priority(QArgs, Config) ->
     ok = amqp10_client:detach_link(Receiver2),
     ok = amqp10_client:detach_link(Sender),
     {ok, #{message_count := 0}} = rabbitmq_amqp_client:delete_queue(LinkPair, QName),
-    ok = rabbitmq_amqp_client:detach_management_link_pair_sync(LinkPair),
-    ok = end_session_sync(Session),
-    ok = close_connection_sync(Connection).
+    ok = close(Init).
 
 dead_letter_headers_exchange(Config) ->
-    {Connection, Session, LinkPair} = init(Config),
+    {_, Session, LinkPair} = Init = init(Config),
     QName1 = <<"q1">>,
     QName2 = <<"q2">>,
     {ok, _} = rabbitmq_amqp_client:declare_queue(
@@ -4943,12 +5138,10 @@ dead_letter_headers_exchange(Config) ->
     ok = amqp10_client:detach_link(Sender),
     {ok, #{message_count := 0}} = rabbitmq_amqp_client:delete_queue(LinkPair, QName1),
     {ok, #{message_count := 0}} = rabbitmq_amqp_client:delete_queue(LinkPair, QName2),
-    ok = rabbitmq_amqp_client:detach_management_link_pair_sync(LinkPair),
-    ok = end_session_sync(Session),
-    ok = close_connection_sync(Connection).
+    ok = close(Init).
 
 dead_letter_reject(Config) ->
-    {Connection, Session, LinkPair} = init(Config),
+    {_, Session, LinkPair} = Init = init(Config),
     QName1 = <<"q1">>,
     QName2 = <<"q2">>,
     QName3 = <<"q3">>,
@@ -5051,9 +5244,7 @@ dead_letter_reject(Config) ->
     {ok, #{message_count := 0}} = rabbitmq_amqp_client:delete_queue(LinkPair, QName1),
     {ok, #{message_count := 0}} = rabbitmq_amqp_client:delete_queue(LinkPair, QName2),
     {ok, #{message_count := 0}} = rabbitmq_amqp_client:delete_queue(LinkPair, QName3),
-    ok = rabbitmq_amqp_client:detach_management_link_pair_sync(LinkPair),
-    ok = end_session_sync(Session),
-    ok = close_connection_sync(Connection).
+    ok = close(Init).
 
 dead_letter_reject_message_order_classic_queue(Config) ->
     dead_letter_reject_message_order(<<"classic">>, Config).
@@ -5062,7 +5253,7 @@ dead_letter_reject_message_order_quorum_queue(Config) ->
     dead_letter_reject_message_order(<<"quorum">>, Config).
 
 dead_letter_reject_message_order(QType, Config) ->
-    {Connection, Session, LinkPair} = init(Config),
+    {_, Session, LinkPair} = Init = init(Config),
     QName1 = <<"q1">>,
     QName2 = <<"q2">>,
     {ok, #{type := QType}} = rabbitmq_amqp_client:declare_queue(
@@ -5142,9 +5333,7 @@ dead_letter_reject_message_order(QType, Config) ->
     ok = amqp10_client:detach_link(Sender),
     {ok, #{message_count := 0}} = rabbitmq_amqp_client:delete_queue(LinkPair, QName1),
     {ok, #{message_count := 0}} = rabbitmq_amqp_client:delete_queue(LinkPair, QName2),
-    ok = rabbitmq_amqp_client:detach_management_link_pair_sync(LinkPair),
-    ok = end_session_sync(Session),
-    ok = close_connection_sync(Connection).
+    ok = close(Init).
 
 dead_letter_reject_many_message_order_classic_queue(Config) ->
     dead_letter_reject_many_message_order(<<"classic">>, Config).
@@ -5153,7 +5342,7 @@ dead_letter_reject_many_message_order_quorum_queue(Config) ->
     dead_letter_reject_many_message_order(<<"quorum">>, Config).
 
 dead_letter_reject_many_message_order(QType, Config) ->
-    {Connection, Session, LinkPair} = init(Config),
+    {_, Session, LinkPair} = Init = init(Config),
     QName1 = <<"q1">>,
     QName2 = <<"q2">>,
     {ok, #{type := QType}} = rabbitmq_amqp_client:declare_queue(
@@ -5231,9 +5420,7 @@ dead_letter_reject_many_message_order(QType, Config) ->
     ok = amqp10_client:detach_link(Sender),
     {ok, #{message_count := 0}} = rabbitmq_amqp_client:delete_queue(LinkPair, QName1),
     {ok, #{message_count := 0}} = rabbitmq_amqp_client:delete_queue(LinkPair, QName2),
-    ok = rabbitmq_amqp_client:detach_management_link_pair_sync(LinkPair),
-    ok = end_session_sync(Session),
-    ok = close_connection_sync(Connection).
+    ok = close(Init).
 
 %% Dead letter from a quorum queue into a stream.
 dead_letter_into_stream(Config) ->
@@ -5318,7 +5505,7 @@ accept_multiple_message_order(QType, Config) ->
     QName = atom_to_binary(?FUNCTION_NAME),
     Address = rabbitmq_amqp_address:queue(QName),
 
-    {Connection, Session, LinkPair} = init(Config),
+    {_, Session, LinkPair} = Init = init(Config),
     QProps = #{arguments => #{<<"x-queue-type">> => {utf8, QType}}},
     {ok, #{type := QType}} = rabbitmq_amqp_client:declare_queue(LinkPair, QName, QProps),
 
@@ -5357,9 +5544,7 @@ accept_multiple_message_order(QType, Config) ->
 
     ok = amqp10_client:detach_link(Receiver),
     ?assertMatch({ok, #{message_count := 0}}, rabbitmq_amqp_client:delete_queue(LinkPair, QName)),
-    ok = rabbitmq_amqp_client:detach_management_link_pair_sync(LinkPair),
-    ok = end_session_sync(Session),
-    ok = close_connection_sync(Connection).
+    ok = close(Init).
 
 release_multiple_message_order_classic_queue(Config) ->
     release_multiple_message_order(<<"classic">>, Config).
@@ -5371,7 +5556,7 @@ release_multiple_message_order(QType, Config) ->
     QName = atom_to_binary(?FUNCTION_NAME),
     Address = rabbitmq_amqp_address:queue(QName),
 
-    {Connection, Session, LinkPair} = init(Config),
+    {_, Session, LinkPair} = Init = init(Config),
     QProps = #{arguments => #{<<"x-queue-type">> => {utf8, QType}}},
     {ok, #{type := QType}} = rabbitmq_amqp_client:declare_queue(LinkPair, QName, QProps),
 
@@ -5421,9 +5606,7 @@ release_multiple_message_order(QType, Config) ->
 
     ok = amqp10_client:detach_link(Receiver),
     ?assertMatch({ok, #{message_count := 0}}, rabbitmq_amqp_client:delete_queue(LinkPair, QName)),
-    ok = rabbitmq_amqp_client:detach_management_link_pair_sync(LinkPair),
-    ok = end_session_sync(Session),
-    ok = close_connection_sync(Connection).
+    ok = close(Init).
 
 
 %% This test asserts the following §3.2 requirement:
@@ -5442,7 +5625,7 @@ footer_checksum(FooterOpt, Config) ->
                       adler32 -> <<"x-opt-adler-32">>
                   end,
 
-    {Connection, Session, LinkPair} = init(Config),
+    {_, Session, LinkPair} = Init = init(Config),
     QName = atom_to_binary(FooterOpt),
     Addr = rabbitmq_amqp_address:queue(QName),
     {ok, _} = rabbitmq_amqp_client:declare_queue(LinkPair, QName, #{}),
@@ -5585,9 +5768,7 @@ footer_checksum(FooterOpt, Config) ->
     ok = amqp10_client:detach_link(Receiver),
     ok = amqp10_client:detach_link(Sender),
     {ok, _} = rabbitmq_amqp_client:delete_queue(LinkPair, QName),
-    ok = rabbitmq_amqp_client:detach_management_link_pair_sync(LinkPair),
-    ok = end_session_sync(Session),
-    ok = close_connection_sync(Connection).
+    ok = close(Init).
 
 receive_many_made_available_over_time_classic_queue(Config) ->
     receive_many_made_available_over_time(<<"classic">>, Config).
@@ -5788,16 +5969,14 @@ incoming_window_closed_stop_link(Config) ->
     end,
 
     {ok, _} = rabbitmq_amqp_client:delete_queue(LinkPair, QName),
-    ok = rabbitmq_amqp_client:detach_management_link_pair_sync(LinkPair),
-    ok = end_session_sync(Session),
-    ok = close_connection_sync(Connection).
+    ok = close({Connection, Session, LinkPair}).
 
 %% Test that we can close a link while our session incoming-window is closed.
 incoming_window_closed_close_link(Config) ->
     QName = atom_to_binary(?FUNCTION_NAME),
     Address = rabbitmq_amqp_address:queue(QName),
 
-    {Connection, Session, LinkPair} = init(Config),
+    {_, Session, LinkPair} = Init = init(Config),
     {ok, _} = rabbitmq_amqp_client:declare_queue(LinkPair, QName, #{}),
 
     {ok, Sender} = amqp10_client:attach_sender_link(Session, <<"sender">>, Address),
@@ -5831,9 +6010,7 @@ incoming_window_closed_close_link(Config) ->
     end,
 
     {ok, _} = rabbitmq_amqp_client:delete_queue(LinkPair, QName),
-    ok = rabbitmq_amqp_client:detach_management_link_pair_sync(LinkPair),
-    ok = end_session_sync(Session),
-    ok = close_connection_sync(Connection).
+    ok = close(Init).
 
 incoming_window_closed_rabbitmq_internal_flow_classic_queue(Config) ->
     incoming_window_closed_rabbitmq_internal_flow(<<"classic">>, Config).
@@ -5845,7 +6022,7 @@ incoming_window_closed_rabbitmq_internal_flow(QType, Config) ->
     QName = atom_to_binary(?FUNCTION_NAME),
     Address = rabbitmq_amqp_address:queue(QName),
 
-    {Connection, Session, LinkPair} = init(Config),
+    {_, Session, LinkPair} = Init = init(Config),
     QProps = #{arguments => #{<<"x-queue-type">> => {utf8, QType}}},
     {ok, #{type := QType}} = rabbitmq_amqp_client:declare_queue(LinkPair, QName, QProps),
 
@@ -5884,9 +6061,7 @@ incoming_window_closed_rabbitmq_internal_flow(QType, Config) ->
 
     ok = detach_link_sync(Receiver),
     {ok, #{message_count := 0}} = rabbitmq_amqp_client:delete_queue(LinkPair, QName),
-    ok = rabbitmq_amqp_client:detach_management_link_pair_sync(LinkPair),
-    ok = end_session_sync(Session),
-    ok = close_connection_sync(Connection).
+    ok = close(Init).
 
 tcp_back_pressure_rabbitmq_internal_flow_classic_queue(Config) ->
     tcp_back_pressure_rabbitmq_internal_flow(<<"classic">>, Config).
@@ -5978,9 +6153,7 @@ tcp_back_pressure_rabbitmq_internal_flow(QType, Config) ->
 
     ok = detach_link_sync(Receiver),
     {ok, #{message_count := 0}} = rabbitmq_amqp_client:delete_queue(LinkPair, QName),
-    ok = rabbitmq_amqp_client:detach_management_link_pair_sync(LinkPair),
-    ok = end_session_sync(Session),
-    ok = close_connection_sync(Connection).
+    ok = close({Connection, Session, LinkPair}).
 
 session_max_per_connection(Config) ->
     App = rabbit,
@@ -6496,26 +6669,9 @@ ra_name(Q) ->
 wait_for_local_member(<<"stream">>, QName, Config) ->
     %% If it is a stream we need to wait until there is a local member
     %% on the node we want to subscribe from before proceeding.
-    rabbit_ct_helpers:await_condition(
-      fun() -> rpc(Config, 0, ?MODULE, has_local_member,
-                   [rabbit_misc:r(<<"/">>, queue, QName)])
-      end, 30_000);
+    ok = queue_utils:wait_for_local_stream_member(0, <<"/">>, QName, Config);
 wait_for_local_member(_, _, _) ->
     ok.
-
-has_local_member(QName) ->
-    case rabbit_amqqueue:lookup(QName) of
-        {ok, Q} ->
-            #{name := StreamId} = amqqueue:get_type_state(Q),
-            case rabbit_stream_coordinator:local_pid(StreamId) of
-                {ok, Pid} ->
-                    is_process_alive(Pid);
-                {error, _} ->
-                    false
-            end;
-        {error, _} ->
-            false
-    end.
 
 -spec find_event(Type, Props, Events) -> Ret when
       Type :: atom(),

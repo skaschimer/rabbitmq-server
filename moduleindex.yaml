@@ -818,6 +818,7 @@ rabbitmq_amqp_client:
 rabbitmq_amqp1_0:
 - rabbitmq_amqp1_0_noop
 rabbitmq_auth_backend_cache:
+- Elixir.RabbitMQ.CLI.Ctl.Commands.ClearAuthBackendCacheCommand
 - rabbit_auth_backend_cache
 - rabbit_auth_backend_cache_app
 - rabbit_auth_cache
@@ -838,7 +839,6 @@ rabbitmq_auth_backend_oauth2:
 - Elixir.RabbitMQ.CLI.Ctl.Commands.AddUaaKeyCommand
 - rabbit_auth_backend_oauth2
 - rabbit_auth_backend_oauth2_app
-- rabbit_oauth2_keycloak
 - rabbit_oauth2_provider
 - rabbit_oauth2_rar
 - rabbit_oauth2_resource_server
@@ -1087,9 +1087,6 @@ rabbitmq_peer_discovery_etcd:
 rabbitmq_peer_discovery_k8s:
 - rabbit_peer_discovery_k8s
 - rabbitmq_peer_discovery_k8s
-- rabbitmq_peer_discovery_k8s_app
-- rabbitmq_peer_discovery_k8s_node_monitor
-- rabbitmq_peer_discovery_k8s_sup
 rabbitmq_prelaunch:
 - rabbit_boot_state
 - rabbit_boot_state_sup

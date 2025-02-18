@@ -129,7 +129,7 @@ endef
 LOCAL_DEPS = sasl os_mon inets compiler public_key crypto ssl syntax_tools xmerl
 
 BUILD_DEPS = rabbitmq_cli
-DEPS = ranch rabbit_common amqp10_common rabbitmq_prelaunch ra sysmon_handler stdout_formatter recon redbug observer_cli osiris syslog systemd seshat horus khepri khepri_mnesia_migration cuttlefish gen_batch_server
+DEPS = ranch cowlib rabbit_common amqp10_common rabbitmq_prelaunch ra sysmon_handler stdout_formatter recon redbug observer_cli osiris syslog systemd seshat horus khepri khepri_mnesia_migration cuttlefish gen_batch_server
 TEST_DEPS = rabbitmq_ct_helpers rabbitmq_ct_client_helpers meck proper amqp_client rabbitmq_amqp_client rabbitmq_amqp1_0
 
 # We pin a version of Horus even if we don't use it directly (it is a
@@ -241,10 +241,10 @@ define ct_master.erl
 	peer:call(Pid2, net_kernel, set_net_ticktime, [5]),
 	peer:call(Pid3, net_kernel, set_net_ticktime, [5]),
 	peer:call(Pid4, net_kernel, set_net_ticktime, [5]),
-	peer:call(Pid1, persistent_term, put, [rabbit_ct_tcp_port_base, 23000]),
-	peer:call(Pid2, persistent_term, put, [rabbit_ct_tcp_port_base, 25000]),
-	peer:call(Pid3, persistent_term, put, [rabbit_ct_tcp_port_base, 27000]),
-	peer:call(Pid4, persistent_term, put, [rabbit_ct_tcp_port_base, 29000]),
+	peer:call(Pid1, persistent_term, put, [rabbit_ct_tcp_port_base, 16000]),
+	peer:call(Pid2, persistent_term, put, [rabbit_ct_tcp_port_base, 20000]),
+	peer:call(Pid3, persistent_term, put, [rabbit_ct_tcp_port_base, 24000]),
+	peer:call(Pid4, persistent_term, put, [rabbit_ct_tcp_port_base, 28000]),
 	[{[_], {ok, Results}}] = ct_master_fork:run("$1"),
 	peer:stop(Pid4),
 	peer:stop(Pid3),
@@ -258,7 +258,7 @@ define ct_master.erl
 endef
 
 PARALLEL_CT_SET_1_A = amqp_client unit_cluster_formation_locking_mocks unit_cluster_formation_sort_nodes unit_collections unit_config_value_encryption unit_connection_tracking
-PARALLEL_CT_SET_1_B = amqp_address amqp_auth amqp_credit_api_v2 amqp_filtex amqp_system signal_handling single_active_consumer unit_access_control_authn_authz_context_propagation unit_access_control_credential_validation unit_amqp091_content_framing unit_amqp091_server_properties unit_app_management
+PARALLEL_CT_SET_1_B = amqp_address amqp_auth amqp_credit_api_v2 amqp_filtex amqp_dotnet amqp_jms signal_handling single_active_consumer unit_access_control_authn_authz_context_propagation unit_access_control_credential_validation unit_amqp091_content_framing unit_amqp091_server_properties unit_app_management
 PARALLEL_CT_SET_1_C = amqp_proxy_protocol amqpl_consumer_ack amqpl_direct_reply_to backing_queue bindings rabbit_db_maintenance rabbit_db_msup rabbit_db_policy rabbit_db_queue rabbit_db_topic_exchange rabbit_direct_reply_to_prop cluster_limit cluster_minority term_to_binary_compat_prop topic_permission transactions unicode unit_access_control
 PARALLEL_CT_SET_1_D = amqqueue_backward_compatibility channel_interceptor channel_operation_timeout classic_queue classic_queue_prop config_schema peer_discovery_dns peer_discovery_tmp_hidden_node per_node_limit per_user_connection_channel_limit
 

@@ -1565,13 +1565,13 @@ format(Config) ->
     case length(Nodes) of
         3 ->
             [_, Server2, Server3] = Nodes,
-            ok = rabbit_control_helper:command(stop_app, Server2),
             ok = rabbit_control_helper:command(stop_app, Server3),
+            ok = rabbit_control_helper:command(stop_app, Server2),
 
             Fmt2 = rabbit_ct_broker_helpers:rpc(Config, Server, rabbit_stream_queue,
                                                ?FUNCTION_NAME, [QRecord, #{}]),
-            ok = rabbit_control_helper:command(start_app, Server2),
             ok = rabbit_control_helper:command(start_app, Server3),
+            ok = rabbit_control_helper:command(start_app, Server2),
             ?assertEqual(stream, proplists:get_value(type, Fmt2)),
             ?assertEqual(minority, proplists:get_value(state, Fmt2)),
             ?assertEqual(Server, proplists:get_value(leader, Fmt2)),
@@ -1734,6 +1734,7 @@ consume_from_replica(Config) ->
     Ch2 = rabbit_ct_client_helpers:open_channel(Config, Server3),
     qos(Ch2, 10, false),
 
+    ok = queue_utils:wait_for_local_stream_member(Server3, <<"/">>, Q, Config),
     subscribe(Ch2, Q, false, 0),
     receive_batch(Ch2, 0, 99),
     rabbit_ct_broker_helpers:rpc(Config, 0, ?MODULE, delete_testcase_queue, [Q]).
