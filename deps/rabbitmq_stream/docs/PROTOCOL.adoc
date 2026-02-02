@@ -240,6 +240,11 @@ used to make the difference between a request (0) and a response (1). Example fo
 |0x001e
 |Yes
 
+|<<resolveoffsetspec>>
+|Client
+|0x001f
+|Yes
+
 |===
 
 === DeclarePublisher
@@ -794,6 +799,43 @@ Delete => Key Version CorrelationId Name
   CorrelationId => uint32
   Name => string
 ```
+
+=== ResolveOffsetSpec
+
+```
+ResolveOffsetSpecRequest => Key Version CorrelationId Stream OffsetSpecification Properties
+  Key => uint16 // 0x001f
+  Version => uint16
+  CorrelationId => uint32
+  Stream => string
+  OffsetSpecification => OffsetType Offset
+  OffsetType => uint16 // 1 (first), 2 (last), 3 (next), 4 (offset), 5 (timestamp)
+  Offset => uint64 (for offset) | int64 (for timestamp)
+  Properties => [Property]
+  Property => Key Value
+  Key => string
+  Value => string
+
+ResolveOffsetSpecResponse => Key Version CorrelationId ResponseCode OffsetType Offset
+  Key => uint16 // 0x801f
+  Version => uint16
+  CorrelationId => uint32
+  ResponseCode => uint16
+  OffsetType => uint16 // 4 (offset)
+  Offset => uint64
+```
+
+Resolves an offset specification to a concrete offset in a stream.
+The client sends an offset specification (first, last, next, a specific offset, or a timestamp) and the server resolves it to the actual offset in the stream.
+
+The response includes the type of the resolved value and the value itself.
+Currently, the resolved value type is always `offset` (4).
+
+Supported request properties:
+
+* `filter.` (e.g. `filter.0`, `filter.1`, etc): prefix to use to define filter values
+* `match-unfiltered`: whether to consider messages without any filter value or not
+* `chunk_selector`: chunk selector to use for offset resolution
 
 == Authentication
 
