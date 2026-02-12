@@ -163,9 +163,9 @@ defmodule SetPolicyCommandTest do
   test "queue master locator policy validation", context do
     vhost_opts = Map.merge(context[:opts], %{vhost: context[:vhost]})
     context = Map.put(context, :opts, vhost_opts)
-    pass_validation(context, "{\"queue-master-locator\":\"min-masters\"}")
-    pass_validation(context, "{\"queue-master-locator\":\"client-local\"}")
-    pass_validation(context, "{\"queue-master-locator\":\"random\"}")
+    fail_validation(context, "{\"queue-master-locator\":\"min-masters\"}")
+    fail_validation(context, "{\"queue-master-locator\":\"client-local\"}")
+    fail_validation(context, "{\"queue-master-locator\":\"random\"}")
     fail_validation(context, "{\"queue-master-locator\":\"made_up\"}")
   end
 

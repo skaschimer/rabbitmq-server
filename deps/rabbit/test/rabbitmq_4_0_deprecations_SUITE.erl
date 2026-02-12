@@ -31,8 +31,8 @@
          when_transient_nonexcl_is_permitted_by_default/1,
          when_transient_nonexcl_is_not_permitted_from_conf/1,
 
-         when_queue_master_locator_is_permitted_by_default/1,
-         when_queue_master_locator_is_not_permitted_from_conf/1
+         when_queue_master_locator_is_permitted_from_conf/1,
+         when_queue_master_locator_is_not_permitted_by_default/1
         ]).
 
 suite() ->
@@ -58,8 +58,8 @@ groups() ->
       [when_transient_nonexcl_is_permitted_by_default,
        when_transient_nonexcl_is_not_permitted_from_conf]},
      {queue_master_locator, [],
-      [when_queue_master_locator_is_permitted_by_default,
-       when_queue_master_locator_is_not_permitted_from_conf]}
+      [when_queue_master_locator_is_permitted_from_conf,
+       when_queue_master_locator_is_not_permitted_by_default]}
     ].
 
 %% -------------------------------------------------------------------
@@ -110,12 +110,12 @@ init_per_testcase(
                    #{transient_nonexcl_queues => false}}]}),
     init_per_testcase1(Testcase, Config1);
 init_per_testcase(
-    when_queue_master_locator_is_not_permitted_from_conf = Testcase, Config) ->
+    when_queue_master_locator_is_permitted_from_conf = Testcase, Config) ->
     Config1 = rabbit_ct_helpers:merge_app_env(
                 Config,
                 {rabbit,
                  [{permit_deprecated_features,
-                   #{queue_master_locator => false}}]}),
+                   #{queue_master_locator => true}}]}),
     init_per_testcase1(Testcase, Config1);
 init_per_testcase(Testcase, Config) ->
     init_per_testcase1(Testcase, Config).
@@ -278,7 +278,7 @@ when_transient_nonexcl_is_not_permitted_from_conf(Config) ->
 %% (x-)queue-master-locator
 %% -------------------------------------------------------------------
 
-when_queue_master_locator_is_permitted_by_default(Config) ->
+when_queue_master_locator_is_permitted_from_conf(Config) ->
     [NodeA] = rabbit_ct_broker_helpers:get_node_configs(Config, nodename),
 
     Ch = rabbit_ct_client_helpers:open_channel(Config, NodeA),
@@ -301,7 +301,7 @@ when_queue_master_locator_is_permitted_by_default(Config) ->
          Config, NodeA,
          ["Deprecated features: `queue_master_locator`: queue-master-locator is deprecated"])).
 
-when_queue_master_locator_is_not_permitted_from_conf(Config) ->
+when_queue_master_locator_is_not_permitted_by_default(Config) ->
     [NodeA] = rabbit_ct_broker_helpers:get_node_configs(Config, nodename),
 
     Ch = rabbit_ct_client_helpers:open_channel(Config, NodeA),
@@ -329,7 +329,7 @@ when_queue_master_locator_is_not_permitted_from_conf(Config) ->
        log_file_contains_message(
          Config, NodeA,
          ["Deprecated features: `queue_master_locator`: Feature `queue_master_locator` is deprecated",
-          "Its use is not permitted per the configuration"])).
+          "By default, this feature is not permitted anymore"])).
 
 %% -------------------------------------------------------------------
 %% Helpers.

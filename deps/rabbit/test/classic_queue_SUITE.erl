@@ -41,8 +41,13 @@ groups() ->
 %% Testsuite setup/teardown.
 %% -------------------------------------------------------------------
 
-init_per_suite(Config) ->
+init_per_suite(Config0) ->
     rabbit_ct_helpers:log_environment(),
+    %% Remove when queue_master_locator is removed entirely.
+    Config = rabbit_ct_helpers:merge_app_env(
+                Config0,
+                {rabbit,
+                 [{permit_deprecated_features, #{queue_master_locator => true}}]}),
     rabbit_ct_helpers:run_setup_steps(Config, []).
 
 end_per_suite(Config) ->
