@@ -259,7 +259,12 @@ init_per_group(Group, Config) ->
         2 when IsMixed ->
             {skip, "cluster size 2 isn't mixed versions compatible"};
         _ ->
-            Config1 = rabbit_ct_helpers:set_config(Config,
+            %% Remove when global_qos is removed entirely.
+            Config0 = rabbit_ct_helpers:merge_app_env(
+                        Config,
+                        {rabbit,
+                         [{permit_deprecated_features, #{global_qos => true}}]}),
+            Config1 = rabbit_ct_helpers:set_config(Config0,
                                                    [{rmq_nodes_count, ClusterSize},
                                                     {rmq_nodename_suffix, Group},
                                                     {tcp_ports_base, {skip_n_nodes, ClusterSize}},
