@@ -1860,7 +1860,20 @@ is_called_in_unit_test() ->
     rabbit_feature_flags:does_override_nodes().
 -endif.
 
-khepri_db_migration_enable1(#{feature_name := FeatureName}) ->
+khepri_db_migration_enable1(#{feature_name := FeatureName} = Arg) ->
+    case rabbit_mnesia:is_virgin_node() of
+        true ->
+            ?LOG_DEBUG(
+               "Feature flag `~s`: virgin node, "
+               "nothing to migrate from Mnesia",
+               [FeatureName],
+               #{domain => ?RMQLOG_DOMAIN_DB}),
+            ok;
+        false ->
+            khepri_db_migration_post_enable2(Arg)
+    end.
+
+khepri_db_migration_post_enable2(#{feature_name := FeatureName}) ->
     Members = locally_known_members(),
     case length(Members) < 2 of
         true ->
