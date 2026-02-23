@@ -511,6 +511,8 @@ maybe_add_inetrc_arguments(VMArgs) ->
             end
     end.
 
+maybe_add_inetrc_arguments1(VMArgs, Val) when is_atom(Val) ->
+    maybe_add_inetrc_arguments1(VMArgs, atom_to_list(Val));
 maybe_add_inetrc_arguments1(VMArgs, Val) ->
     %% The filename argument must be passed as a quoted string so that the
     %% command line is correctly parsed as an Erlang string by the temporary
