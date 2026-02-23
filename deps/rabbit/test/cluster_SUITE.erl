@@ -13,8 +13,21 @@
 -include_lib("amqp_client/include/amqp_client.hrl").
 -include("amqqueue.hrl").
 
--compile(nowarn_export_all).
--compile(export_all).
+-export([all/0,
+         groups/0,
+         group/1,
+         init_per_suite/1,
+         end_per_suite/1,
+         init_per_group/2,
+         end_per_group/2,
+         init_per_testcase/2,
+         end_per_testcase/2,
+
+         delegates_async/1, delegates_async1/2,
+         delegates_sync/1, delegates_sync1/2,
+         declare_on_dead_queue/1, declare_on_dead_queue1/2,
+         credentials_obfuscation/1
+        ]).
 
 -define(TIMEOUT, 30000).
 
@@ -23,7 +36,6 @@
 -define(CLUSTER_TESTCASES, [
     delegates_async,
     delegates_sync,
-    queue_cleanup,
     declare_on_dead_queue
   ]).
 
@@ -94,16 +106,6 @@ end_per_group(Group, Config) ->
             Config
     end.
 
-init_per_testcase(queue_cleanup = Testcase, Config) ->
-    case lists:any(fun(B) -> B end,
-                   rabbit_ct_broker_helpers:rpc_all(
-                     Config, rabbit_feature_flags, is_enabled,
-                     [khepri_db])) of
-        true ->
-            {skip, "Invalid testcase using Khepri. All queues are durable"};
-        false ->
-            rabbit_ct_helpers:testcase_started(Config, Testcase)
-    end;
 init_per_testcase(Testcase, Config) ->
     rabbit_ct_helpers:testcase_started(Config, Testcase).
 
@@ -193,35 +195,6 @@ delegates_sync1(_Config, SecondaryNode) ->
 
     passed.
 
-queue_cleanup(Config) ->
-    {I, J} = ?config(test_direction, Config),
-    From = rabbit_ct_broker_helpers:get_node_config(Config, I, nodename),
-    To = rabbit_ct_broker_helpers:get_node_config(Config, J, nodename),
-    rabbit_ct_broker_helpers:add_code_path_to_node(To, ?MODULE),
-    passed = rabbit_ct_broker_helpers:rpc(Config,
-      From, ?MODULE, queue_cleanup1, [Config, To]).
-
-queue_cleanup1(_Config, _SecondaryNode) ->
-    {_Writer, Ch} = test_spawn(),
-    rabbit_channel:do(Ch, #'queue.declare'{ queue = ?CLEANUP_QUEUE_NAME }),
-    receive #'queue.declare_ok'{queue = ?CLEANUP_QUEUE_NAME} ->
-            ok
-    after ?TIMEOUT -> throw(failed_to_receive_queue_declare_ok)
-    end,
-    rabbit_channel:shutdown(Ch),
-    rabbit:stop(),
-    rabbit:start(),
-    {_Writer2, Ch2} = test_spawn(),
-    rabbit_channel:do(Ch2, #'queue.declare'{ passive = true,
-                                             queue   = ?CLEANUP_QUEUE_NAME }),
-    receive
-        #'channel.close'{reply_code = ?NOT_FOUND} ->
-            ok
-    after ?TIMEOUT -> throw(failed_to_receive_channel_exit)
-    end,
-    rabbit_channel:shutdown(Ch2),
-    passed.
-
 declare_on_dead_queue(Config) ->
     {I, J} = ?config(test_direction, Config),
     From = rabbit_ct_broker_helpers:get_node_config(Config, I, nodename),
@@ -287,42 +260,6 @@ dead_queue_loop(QueueName, OldPid) ->
         _      -> true = rabbit_misc:is_process_alive(QPid),
                   Q
     end.
-
-
-test_spawn() ->
-    {Writer, _Limiter, Ch} = rabbit_ct_broker_helpers:test_channel(),
-    ok = rabbit_channel:do(Ch, #'channel.open'{}),
-    receive #'channel.open_ok'{} -> ok
-    after ?TIMEOUT -> throw(failed_to_receive_channel_open_ok)
-    end,
-    {Writer, Ch}.
-
-test_spawn(Node) ->
-    rpc:call(Node, ?MODULE, test_spawn_remote, []).
-
-%% Spawn an arbitrary long lived process, so we don't end up linking
-%% the channel to the short-lived process (RPC, here) spun up by the
-%% RPC server.
-test_spawn_remote() ->
-    RPC = self(),
-    spawn(fun () ->
-                  {Writer, Ch} = test_spawn(),
-                  RPC ! {Writer, Ch},
-                  link(Ch),
-                  receive
-                      _ -> ok
-                  end
-          end),
-    receive Res -> Res
-    after ?TIMEOUT  -> throw(failed_to_receive_result)
-    end.
-
-queue_name(Config, Name) ->
-    Name1 = iolist_to_binary(rabbit_ct_helpers:config_to_testcase_name(Config, Name)),
-    queue_name(Name1).
-
-queue_name(Name) ->
-    rabbit_misc:r(<<"/">>, queue, Name).
 
 credentials_obfuscation(Config) ->
     Value = <<"amqp://something">>,
