@@ -39,9 +39,9 @@ excluded.
 
 ## Data Sources
 
-### Erlang ranges
+### Erlang Version Ranges
 
-The Erlang minimum and maximum for each release come from the compatibility
+The Erlang minimum and maximum version for each RabbitMQ release come from the compatibility
 table in the RabbitMQ website repository at `docs/which-erlang.md`:
 
 https://github.com/rabbitmq/rabbitmq-website/blob/main/docs/which-erlang.md
@@ -65,7 +65,7 @@ When a release exists in the git tags but is not explicitly listed in the HTML
 table, assign it the same Erlang range as its siblings in the same release
 series and compatibility group.
 
-### Elixir ranges
+### Elixir Version Ranges
 
 The Elixir range for each release comes from the `elixir` field in
 `deps/rabbitmq_cli/mix.exs` at the corresponding git tag.

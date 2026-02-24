@@ -123,7 +123,8 @@ These dependencies are cloned by `gmake` during the build process:
 
 RabbitMQ [targets Erlang `27.x`](https://www.rabbitmq.com/docs/which-erlang) and a reasonably [recent Elixir](https://github.com/elixir-lang/elixir/releases) (e.g. `1.18.x`, `1.19.x`).
 
-Per-release Erlang and Elixir compatibility ranges are in `docs/compatibility.json`.
+Per-release Erlang and Elixir compatibility ranges in machine-readable format
+can be found in `docs/compatibility.json`.
 
 
 ## GitHub Actions
