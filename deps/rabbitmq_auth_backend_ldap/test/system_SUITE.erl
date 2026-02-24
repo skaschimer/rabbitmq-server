@@ -127,6 +127,10 @@ suite() ->
 
 init_per_suite(Config) ->
     rabbit_ct_helpers:log_environment(),
+    case os:getenv("RUNNER_ENVIRONMENT") of
+        "self-hosted" -> os:putenv("RABBITMQ_CT_SKIP_AS_ERROR", "0");
+        _ -> ok
+    end,
     rabbit_ct_helpers:run_setup_steps(Config, [fun init_slapd/1]).
 
 end_per_suite(Config) ->
