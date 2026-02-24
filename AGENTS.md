@@ -85,6 +85,7 @@ from individual `deps/` component directories (see below).
  * `deps/rabbitmq_web_mqtt_examples`: MQTT-over-WebSockets examples (with a Web UI part)
  * `deps/rabbitmq_web_stomp`: STOMP-over-WebSockets
  * `deps/rabbitmq_web_stomp_examples`: STOMP-over-WebSockets examples (with a Web UI part)
+ * `docs/compatibility.json`: machine-readable Erlang/Elixir compatibility matrix for all releases from 3.11.0 onwards. See `docs/COMPATIBILITY.md` for maintenance instructions
  * `scripts` contains shell scripts that drive the server and CLI tools
  * `packaging` contains *some* packaging-related code; release artifacts source can be found in [`rabbitmq/rabbitmq-packaging`](https://github.com/rabbitmq/rabbitmq-packaging)
  * `selenium` contains Selenium tests for the management UI and the OAuth 2 plugin
@@ -121,6 +122,9 @@ These dependencies are cloned by `gmake` during the build process:
 ## Target Erlang and Elixir Versions
 
 RabbitMQ [targets Erlang `27.x`](https://www.rabbitmq.com/docs/which-erlang) and a reasonably [recent Elixir](https://github.com/elixir-lang/elixir/releases) (e.g. `1.18.x`, `1.19.x`).
+
+Per-release Erlang and Elixir compatibility ranges in machine-readable format
+can be found in `docs/compatibility.json`.
 
 
 ## GitHub Actions
