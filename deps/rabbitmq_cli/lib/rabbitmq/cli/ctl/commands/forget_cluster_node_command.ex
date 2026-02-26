@@ -40,12 +40,7 @@ defmodule RabbitMQ.CLI.Ctl.Commands.ForgetClusterNodeCommand do
       RabbitMQ.CLI.Core.Helpers.defer(fn ->
         _ = :rabbit_event.start_link()
 
-        try do
-          :rabbit_db_cluster.forget_member(to_atom(node_to_remove), true)
-        catch
-          :error, :undef ->
-            :rabbit_mnesia.forget_cluster_node(to_atom(node_to_remove), true)
-        end
+        :rabbit_db_cluster.forget_member(to_atom(node_to_remove), true)
       end)
     ])
   end
@@ -55,13 +50,7 @@ defmodule RabbitMQ.CLI.Ctl.Commands.ForgetClusterNodeCommand do
     args = [atom_name, false]
 
     ret =
-      case :rabbit_misc.rpc_call(node_name, :rabbit_db_cluster, :forget_member, args) do
-        {:badrpc, {:EXIT, {:undef, _}}} ->
-          :rabbit_misc.rpc_call(node_name, :rabbit_mnesia, :forget_cluster_node, args)
-
-        ret0 ->
-          ret0
-      end
+      :rabbit_misc.rpc_call(node_name, :rabbit_db_cluster, :forget_member, args)
 
     case ret do
       {:error, {:failed_to_remove_node, ^atom_name, :rabbit_still_running}} ->
