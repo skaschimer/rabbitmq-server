@@ -25,13 +25,7 @@ defmodule RabbitMQ.CLI.Ctl.Commands.ForceBootCommand do
 
   def run([], %{node: node_name} = opts) do
     ret =
-      case :rabbit_misc.rpc_call(node_name, :rabbit_db, :force_load_on_next_boot, []) do
-        {:badrpc, {:EXIT, {:undef, _}}} ->
-          :rabbit_misc.rpc_call(node_name, :rabbit_mnesia, :force_load_next_boot, [])
-
-        ret0 ->
-          ret0
-      end
+      :rabbit_misc.rpc_call(node_name, :rabbit_db, :force_load_on_next_boot, [])
 
     case ret do
       {:badrpc, :nodedown} ->
