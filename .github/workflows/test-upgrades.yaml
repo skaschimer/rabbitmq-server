@@ -138,16 +138,17 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run scenario
+        timeout-minutes: 15
         run: |
           sh NEW/.github/workflows/test-upgrades.sh \
             '${{ matrix.scenario }}' \
             '${{ matrix.node_count }}'
 
-      - name: Upload data dirs for next job
+      - name: Upload data dirs
         if: always()
-        uses: pyTooling/upload-artifact@v6
+        uses: actions/upload-artifact@v6
         with:
           name: instances-data-dirs-${{ matrix.scenario }}-${{ matrix.node_count }}-nodes
-          path: test-instances
+          path: test-instances/*/log/*
           include-hidden-files: true
           if-no-files-found: error
