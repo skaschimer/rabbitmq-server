@@ -768,7 +768,7 @@ i(online, Q) ->
                          (Key, _, Acc) ->
                               [Key | Acc]
                       end, [], Members);
-        {error, not_found} ->
+        {error, _} ->
             []
     end;
 i(state, Q) when ?is_amqqueue(Q) ->
