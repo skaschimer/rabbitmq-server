@@ -95,8 +95,7 @@ connections_not_leaked_on_parse_error(Config) ->
                            Client, "LOL", [{<<"">>, <<"">>}])
                   end,
                   lists:seq(1, 100)),
-    timer:sleep(5000),
-    N = count_connections(Config),
+    rabbit_ct_helpers:await_condition(fun() -> count_connections(Config) =:= N end, 30_000),
     ok.
 
 messages_not_dropped_on_disconnect(Config) ->

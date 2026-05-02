@@ -167,9 +167,9 @@ global_counters(Config) ->
     rabbit_stomp_client:send(
       Client1, 'UNSUBSCRIBE', [{<<"id">>, <<"counter-sub">>}]),
 
-    timer:sleep(100),
-    C2 = get_global_counters(Config, ProtoVer),
-    ?assertEqual(Cons0, maps:get(consumers, C2)),
+    rabbit_ct_helpers:await_condition(
+      fun() -> maps:get(consumers, get_global_counters(Config, ProtoVer)) =:= Cons0 end,
+      5_000),
 
     ok.
 
