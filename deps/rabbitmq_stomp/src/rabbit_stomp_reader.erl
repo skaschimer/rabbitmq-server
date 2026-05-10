@@ -81,7 +81,7 @@ init([SupHelperPid, Ref, Configuration]) ->
                     ProcInitArgs = {SendFun, SSLLoginName, ConnName,
                                     Host, Port, PeerHost, PeerPort},
                     ProcState = rabbit_stomp_processor:initial_state(
-                                  Configuration, ProcInitArgs),
+                                  Configuration, ProcInitArgs, Ref),
 
                     ?LOG_INFO("accepting STOMP connection ~tp (~ts)",
                         [self(), ConnName]),
