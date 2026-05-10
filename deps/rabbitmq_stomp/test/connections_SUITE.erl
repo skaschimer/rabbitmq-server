@@ -28,7 +28,8 @@ all() ->
         unauthenticated_send_returns_error,
         unauthenticated_subscribe_returns_error,
         unauthenticated_disconnect_returns_error,
-        unauthenticated_error_does_not_crash_reader
+        unauthenticated_error_does_not_crash_reader,
+        node_connection_limit
     ].
 
 merge_app_env(Config) ->
@@ -249,6 +250,20 @@ unauthenticated_disconnect_returns_error(Config) ->
     {ok, Frame, _} = rabbit_stomp_frame:parse(Data, rabbit_stomp_frame:initial_state()),
     'ERROR' = Frame#stomp_frame.command,
     gen_tcp:close(Sock).
+
+node_connection_limit(Config) ->
+    rabbit_ct_broker_helpers:rpc(Config, 0, application, set_env,
+                                 [rabbitmq_stomp, max_connections, 0]),
+    StompPort = get_stomp_port(Config),
+    {ok, Sock} = gen_tcp:connect(localhost, StompPort, [{active, false}, binary]),
+    ConnectFrame = <<"CONNECT\nlogin:guest\npasscode:guest\naccept-version:1.2\n\n\0">>,
+    ok = gen_tcp:send(Sock, ConnectFrame),
+    {ok, Data} = gen_tcp:recv(Sock, 0, 5000),
+    {ok, Frame, _} = rabbit_stomp_frame:parse(Data, rabbit_stomp_frame:initial_state()),
+    'ERROR' = Frame#stomp_frame.command,
+    gen_tcp:close(Sock),
+    rabbit_ct_broker_helpers:rpc(Config, 0, application, set_env,
+                                 [rabbitmq_stomp, max_connections, infinity]).
 
 %% After rejecting an unauthenticated frame, the reader must still
 %% be alive and able to accept a proper CONNECT.
