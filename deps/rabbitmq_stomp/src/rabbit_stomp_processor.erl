@@ -12,7 +12,6 @@
 -compile({no_auto_import, [error/3]}).
 
 -export([initial_state/2,
-         initial_state/3,
          process_frame/2,
          flush_and_die/1,
          info/2]).
@@ -86,8 +85,7 @@
          default_nack_requeue = true :: boolean(),
          delivery_flow               :: flow | noflow,
          trace_state                 :: undefined | rabbit_trace:state(),
-         msg_interceptor_ctx         :: undefined | map(),
-         ranch_ref                   :: ranch:ref() | undefined
+         msg_interceptor_ctx         :: undefined | map()
         }).
 
 -record(state,
@@ -136,25 +134,9 @@ adapter_name(#state{cfg = #cfg{conn_info = #conn_info{conn_name = Name}}}) ->
        Port :: inet:port_number(),
        PeerHost :: inet:ip_address(),
        PeerPort :: inet:port_number().
-initial_state(Configuration, ProcInitArgs) ->
-    initial_state(Configuration, ProcInitArgs, undefined).
-
--spec initial_state(
-  #stomp_configuration{},
-  {SendFun, SSLLoginName, ConnName, Host, Port, PeerHost, PeerPort},
-  ranch:ref() | undefined)
-    -> #state{}
-  when SendFun :: send_fun(),
-       SSLLoginName :: none | binary(),
-       ConnName :: binary(),
-       Host :: inet:ip_address(),
-       Port :: inet:port_number(),
-       PeerHost :: inet:ip_address(),
-       PeerPort :: inet:port_number().
 initial_state(Configuration,
               {SendFun, SSLLoginName, ConnName,
-               Host, Port, PeerHost, PeerPort},
-              RanchRef) ->
+               Host, Port, PeerHost, PeerPort}) ->
     Flow = case rabbit_misc:get_env(rabbit, mirroring_flow_control, true) of
                true   -> flow;
                false  -> noflow
@@ -180,8 +162,7 @@ initial_state(Configuration,
                 default_login          = Configuration#stomp_configuration.default_login,
                 default_passcode       = Configuration#stomp_configuration.default_passcode,
                 force_default_creds    = Configuration#stomp_configuration.force_default_creds,
-                delivery_flow          = Flow,
-                ranch_ref              = RanchRef
+                delivery_flow          = Flow
                },
        subscriptions       = #{},
        queue_consumers     = #{},
@@ -341,13 +322,12 @@ process_connect(Implicit, Frame,
                 State = #state{user = undefined,
                                cfg  = Config = #cfg{
                                                   conn_info      = ConnInfo,
-                                                  ssl_login_name = SSLLoginName,
-                                                  ranch_ref      = RanchRef}}) ->
+                                                  ssl_login_name = SSLLoginName}}) ->
     PeerIp = ConnInfo#conn_info.peer_host,
     process_request(
       fun(StateN) ->
               Res1 = maybe
-                  ok ?= check_node_connection_limit(RanchRef),
+                  ok ?= check_node_connection_limit(),
                   {ok, Version} ?= negotiate_version(Frame),
                   ProtoVer = stomp_proto_ver(Version),
                   FT = frame_transformer(Version),
@@ -368,6 +348,7 @@ process_connect(Implicit, Frame,
                   ok ?= check_vhost_connection_limit(VHost),
                   ok ?= check_user_loopback(Username, PeerIp),
                   rabbit_core_metrics:auth_attempt_succeeded(PeerIp, Username, stomp),
+                  ok = register_connection(),
                   TraceState = rabbit_trace:init(VHost),
                   MsgIcptCtx = #{protocol => stomp,
                                  vhost => VHost,
@@ -2044,25 +2025,32 @@ check_vhost_access(VHost, User = #user{username = Username}, PeerIp) ->
             {error, not_allowed, Username, VHost}
     end.
 
-check_node_connection_limit(undefined) ->
-    ok;
-check_node_connection_limit(RanchRef) ->
-    case application:get_env(rabbitmq_stomp, max_connections, infinity) of
+check_node_connection_limit() ->
+    case application:get_env(?APP_NAME, max_connections, infinity) of
         infinity ->
             ok;
-        Limit when is_integer(Limit), Limit >= 0 ->
-            #{active_connections := ActiveConns} = ranch:info(RanchRef),
-            case ActiveConns > Limit of
-                false ->
-                    ok;
-                true ->
-                    ?LOG_ERROR("STOMP connection failed: node connection limit ~tp is reached",
+        Limit when is_integer(Limit) andalso Limit >= 0 ->
+            PgScope = persistent_term:get(?PG_SCOPE),
+            %% ETS table size equals the count of live local connections;
+            %% see register_connection/0. Caller has not joined yet, so `>=`.
+            case ets:info(PgScope, size) of
+                N when is_integer(N) andalso N >= Limit ->
+                    ?LOG_ERROR("STOMP connection failed: node connection limit ~b is reached",
                                [Limit]),
-                    {error, node_connection_limit_exceeded}
+                    {error, node_connection_limit_exceeded};
+                N when is_integer(N) ->
+                    ok;
+                Other ->
+                    ?LOG_WARNING("STOMP pg scope ETS table '~ts' size is ~tp",
+                                 [PgScope, Other]),
+                    ok
             end;
         _ ->
             ok
     end.
+
+register_connection() ->
+    ok = pg:join(persistent_term:get(?PG_SCOPE), self(), self()).
 
 check_vhost_connection_limit(VHost) ->
     case rabbit_vhost_limit:is_over_connection_limit(VHost) of
