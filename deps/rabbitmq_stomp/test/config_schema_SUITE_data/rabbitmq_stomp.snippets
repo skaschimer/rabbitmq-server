@@ -98,5 +98,15 @@
  {max_frame_size_unauthenticated,
   "stomp.max_frame_size_unauthenticated = 32768",
   [{rabbitmq_stomp,[{max_frame_size_unauthenticated,32768}]}],
+  [rabbitmq_stomp]},
+
+ {max_connections,
+  "stomp.max_connections = 10",
+  [{rabbitmq_stomp,[{max_connections, 10}]}],
+  [rabbitmq_stomp]},
+
+ {max_connections_infinity,
+  "stomp.max_connections = infinity",
+  [{rabbitmq_stomp,[{max_connections, infinity}]}],
   [rabbitmq_stomp]}
 ].

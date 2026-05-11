@@ -157,6 +157,19 @@ end}.
     {datatype, integer}
 ]}.
 
+{mapping, "stomp.max_connections", "rabbitmq_stomp.max_connections",
+    [{datatype, [{atom, infinity}, integer]}, {validators, ["non_negative_integer"]}]}.
+
+{translation, "rabbitmq_stomp.max_connections",
+fun(Conf) ->
+    case cuttlefish:conf_get("stomp.max_connections", Conf, undefined) of
+        undefined -> cuttlefish:unset();
+        infinity  -> infinity;
+        Val when is_integer(Val) -> Val;
+        _         -> cuttlefish:invalid("should be a non-negative integer")
+    end
+end}.
+
 %% Additional TLS options
 
 %% Extract a name from the client's certificate when using TLS.

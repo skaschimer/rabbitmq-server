@@ -17,6 +17,8 @@
          emit_connection_info_local/3,
          emit_connection_info_all/4,
          list/0,
+         local_connection_pids/0,
+         local_connection_count/0,
          close_all_client_connections/1]).
 
 -define(DEFAULT_CONFIGURATION,
@@ -138,10 +140,32 @@ init_global_counters(ProtoVer) ->
 
 list() ->
     [Client ||
-        {_, ListSup, _, _} <- supervisor:which_children(rabbit_stomp_sup),
+        {_, ListSup, supervisor, _} <- supervisor:which_children(rabbit_stomp_sup),
         {_, RanchEmbeddedSup, supervisor, _} <- supervisor:which_children(ListSup),
         {{ranch_listener_sup, _}, RanchListSup, _, _} <- supervisor:which_children(RanchEmbeddedSup),
         {ranch_conns_sup_sup, RanchConnsSup, supervisor, _} <- supervisor:which_children(RanchListSup),
         {_, RanchConnSup, supervisor, _} <- supervisor:which_children(RanchConnsSup),
         {_, StompClientSup, supervisor, _} <- supervisor:which_children(RanchConnSup),
         {rabbit_stomp_reader, Client, _, _} <- supervisor:which_children(StompClientSup)].
+
+-spec local_connection_pids() -> [pid()].
+local_connection_pids() ->
+    case persistent_term:get(?PG_SCOPE, undefined) of
+        undefined ->
+            [];
+        PgScope ->
+            lists:flatmap(fun(Group) ->
+                                  pg:get_local_members(PgScope, Group)
+                          end, pg:which_groups(PgScope))
+    end.
+
+-spec local_connection_count() -> non_neg_integer().
+local_connection_count() ->
+    case persistent_term:get(?PG_SCOPE, undefined) of
+        undefined -> 0;
+        PgScope ->
+            case ets:info(PgScope, size) of
+                N when is_integer(N) -> N;
+                _ -> 0
+            end
+    end.

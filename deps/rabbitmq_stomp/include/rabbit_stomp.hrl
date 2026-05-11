@@ -5,6 +5,10 @@
 %% Copyright (c) 2007-2026 Broadcom. All Rights Reserved. The term “Broadcom” refers to Broadcom Inc. and/or its subsidiaries. All rights reserved.
 %%
 
+-define(APP_NAME, rabbitmq_stomp).
+
+-define(PG_SCOPE, pg_scope_rabbitmq_stomp_connections).
+
 -record(stomp_configuration, {default_login,
                               default_passcode,
                               force_default_creds = false,

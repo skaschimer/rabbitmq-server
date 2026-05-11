@@ -327,6 +327,7 @@ process_connect(Implicit, Frame,
     process_request(
       fun(StateN) ->
               Res1 = maybe
+                  ok ?= check_node_connection_limit(),
                   {ok, Version} ?= negotiate_version(Frame),
                   ProtoVer = stomp_proto_ver(Version),
                   FT = frame_transformer(Version),
@@ -347,6 +348,7 @@ process_connect(Implicit, Frame,
                   ok ?= check_vhost_connection_limit(VHost),
                   ok ?= check_user_loopback(Username, PeerIp),
                   rabbit_core_metrics:auth_attempt_succeeded(PeerIp, Username, stomp),
+                  ok = register_connection(),
                   TraceState = rabbit_trace:init(VHost),
                   MsgIcptCtx = #{protocol => stomp,
                                  vhost => VHost,
@@ -403,6 +405,10 @@ process_connect(Implicit, Frame,
                   {error, quota_exceeded} ->
                       error("Bad CONNECT",
                             "Connection refused: vhost connection limit reached",
+                            State);
+                  {error, node_connection_limit_exceeded} ->
+                      error("Bad CONNECT",
+                            "Connection refused: node connection limit reached",
                             State)
               end,
               case {Res1, Implicit} of
@@ -2018,6 +2024,33 @@ check_vhost_access(VHost, User = #user{username = Username}, PeerIp) ->
                        [Username, VHost]),
             {error, not_allowed, Username, VHost}
     end.
+
+check_node_connection_limit() ->
+    case application:get_env(?APP_NAME, max_connections, infinity) of
+        infinity ->
+            ok;
+        Limit when is_integer(Limit) andalso Limit >= 0 ->
+            PgScope = persistent_term:get(?PG_SCOPE),
+            %% ETS table size equals the count of live local connections;
+            %% see register_connection/0. Caller has not joined yet, so `>=`.
+            case ets:info(PgScope, size) of
+                N when is_integer(N) andalso N >= Limit ->
+                    ?LOG_ERROR("STOMP connection failed: node connection limit ~b is reached",
+                               [Limit]),
+                    {error, node_connection_limit_exceeded};
+                N when is_integer(N) ->
+                    ok;
+                Other ->
+                    ?LOG_WARNING("STOMP pg scope ETS table '~ts' size is ~tp",
+                                 [PgScope, Other]),
+                    ok
+            end;
+        _ ->
+            ok
+    end.
+
+register_connection() ->
+    ok = pg:join(persistent_term:get(?PG_SCOPE), self(), self()).
 
 check_vhost_connection_limit(VHost) ->
     case rabbit_vhost_limit:is_over_connection_limit(VHost) of

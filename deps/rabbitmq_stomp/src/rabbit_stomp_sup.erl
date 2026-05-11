@@ -8,6 +8,9 @@
 -module(rabbit_stomp_sup).
 -behaviour(supervisor).
 
+-include_lib("rabbit_common/include/rabbit.hrl").
+-include("rabbit_stomp.hrl").
+
 -export([start_link/2, init/1, stop_listeners/0]).
 
 -define(TCP_PROTOCOL, 'stomp').
@@ -28,18 +31,28 @@ init([{Listeners, SslListeners0}, Configuration]) ->
                      application:get_env(rabbitmq_stomp, num_ssl_acceptors, 10),
                      SslListeners0}
           end,
+    %% Node-local pg scope shared by native STOMP and Web STOMP. Its ETS
+    %% table size is the count `stomp.max_connections` enforces.
+    PgScope = rabbit:pg_local_scope(?PG_SCOPE),
+    persistent_term:put(?PG_SCOPE, PgScope),
     Flags = #{
         strategy => one_for_all,
         period => 10,
         intensity => 10
     },
+    PgChild = #{id => PgScope,
+                start => {pg, start_link, [PgScope]},
+                restart => transient,
+                shutdown => ?WORKER_WAIT,
+                type => worker},
     {ok, {Flags,
+          [PgChild |
            listener_specs(fun tcp_listener_spec/1,
                           [SocketOpts, Configuration, NumTcpAcceptors, ConcurrentConnsSups],
                           Listeners) ++
            listener_specs(fun ssl_listener_spec/1,
                           [SocketOpts, SslOpts, Configuration, NumSslAcceptors, ConcurrentConnsSups],
-                          SslListeners)}}.
+                          SslListeners)]}}.
 
 stop_listeners() ->
     rabbit_networking:stop_ranch_listeners_of_protocol(?TCP_PROTOCOL),
