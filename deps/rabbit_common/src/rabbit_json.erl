@@ -54,5 +54,14 @@ encode_value(V, Encode) when is_function(V) ->
     json:encode_value(rabbit_data_coercion:to_binary(V), Encode);
 encode_value([{_, _} | _] = List, Encode) ->
     json:encode_key_value_list(List, Encode);
+%% IPv4 address tuple, e.g. {192, 168, 1, 1}
+encode_value({A, B, C, D} = IP, Encode)
+  when is_integer(A), is_integer(B), is_integer(C), is_integer(D) ->
+    json:encode_value(list_to_binary(rabbit_misc:ntoa(IP)), Encode);
+%% IPv6 address tuple, e.g. {0, 0, 0, 0, 0, 0, 0, 1}
+encode_value({A, B, C, D, E, F, G, H} = IP, Encode)
+  when is_integer(A), is_integer(B), is_integer(C), is_integer(D),
+       is_integer(E), is_integer(F), is_integer(G), is_integer(H) ->
+    json:encode_value(list_to_binary(rabbit_misc:ntoa(IP)), Encode);
 encode_value(Other, Encode) ->
     json:encode_value(Other, Encode).
